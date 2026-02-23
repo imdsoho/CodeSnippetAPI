@@ -32,11 +32,27 @@ def _db_init() -> None:
         """
     )
     conn.commit()
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plots (
+            user_id TEXT,
+            job_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL
+        )
+        """
+    )
+    conn.commit()
     conn.close()
 
 
 async def db_init() -> None:
     await asyncio.to_thread(_db_init)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# JOBS
+# ---------------------------------------------------------------------------------------------------------------------
 
 
 def _db_insert_job(job_id: str, payload: dict) -> None:
@@ -99,3 +115,67 @@ def _db_get_job(job_id: str) -> Optional[dict]:
 
 async def db_get_job(job_id: str) -> Optional[dict]:
     return await asyncio.to_thread(_db_get_job, job_id)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# PLOTS
+# ---------------------------------------------------------------------------------------------------------------------
+
+def _db_insert_plot_job(user_id: str, job_id: str) -> None:
+    conn = _db_connect()
+    conn.execute(
+        """
+        INSERT INTO plots (user_id, job_id, status)
+        VALUES (?, ?, ?)
+        """,
+        (user_id, job_id, "PENDING"),
+    )
+    conn.commit()
+    conn.close()
+
+
+async def db_insert_plot_job(user_id: str, job_id: str) -> None:
+    await asyncio.to_thread(_db_insert_plot_job, user_id, job_id)
+
+
+def _db_update_plot_status(job_id: str, status: str) -> None:
+    conn = _db_connect()
+    conn.execute(
+        """
+        UPDATE plots
+        SET status=?
+        WHERE job_id=?
+        """,
+        (status, job_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def db_update_plot_status(job_id: str, status: str) -> None:
+    _db_update_plot_status(job_id, status)
+
+
+def _db_get_plot_job(job_id: str) -> Optional[dict]:
+    conn = _db_connect()
+    cur = conn.execute(
+        """
+        SELECT user_id, job_id, status 
+        FROM plots 
+        WHERE job_id=?
+        """,
+        (job_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "user_id": row[0],
+        "job_id": row[1],
+        "status": row[2]
+    }
+
+
+async def db_get_plot_job(job_id: str) -> Optional[dict]:
+    return await asyncio.to_thread(_db_get_plot_job, job_id)

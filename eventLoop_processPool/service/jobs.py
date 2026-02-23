@@ -1,4 +1,6 @@
 import asyncio
+import random
+
 from eventLoop_processPool.repository import db_repository as database
 
 
@@ -46,6 +48,68 @@ async def run_job(job_id: str, payload: dict, app) -> None:
 
     except Exception as e:
         await database.db_update_status(job_id, "FAILED", error=f"{type(e).__name__}: {e}")
+
+    finally:
+        app.state.RUNNING_TASKS.pop(job_id, None)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# PLOTS
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+def create_plot_analyze(job_id: str) -> None:
+    n = random.randint(1_000_000, 3_000_000)
+    s = 0
+    for i in range(n):
+        s += (i * i) % 97
+    database.db_update_plot_status(job_id, "STEP-1")
+
+    n = random.randint(10_000_000, 30_000_000)
+    s = 0
+    for i in range(n):
+        s += (i * i) % 97
+    database.db_update_plot_status(job_id, "STEP-2")
+
+    n = random.randint(10_000_000, 30_000_000)
+    s = 0
+    for i in range(n):
+        s += (i * i) % 97
+    database.db_update_plot_status(job_id, "STEP-3")
+
+    n = random.randint(10_000_000, 30_000_000)
+    s = 0
+    for i in range(n):
+        s += (i * i) % 97
+    database.db_update_plot_status(job_id, "SUCCEED")
+
+
+async def run_plot(job_id: str, app) -> None:
+    """
+    실제 실행 루틴:
+    - DB: RUNNING
+    - 세마포어로 동시성 제한
+    - event loop에서 run_in_executor로 프로세스에 CPU 작업 위임
+    - DB: SUCCEEDED/FAILED/CANCELLED
+    """
+    assert app.state.EXECUTOR is not None
+    assert app.state.CPU_SEM is not None
+
+    loop = asyncio.get_running_loop()
+    database.db_update_plot_status(job_id, "RUNNING")
+
+    try:
+        async with app.state.CPU_SEM:
+            # CPU-bound는 프로세스 풀로 보냄 (event loop block 방지)
+            result = await loop.run_in_executor(app.state.EXECUTOR, create_plot_analyze, job_id)
+
+    except asyncio.CancelledError:
+        # 이 Task 자체가 취소된 경우
+        database.db_update_plot_status(job_id, "CANCELLED", error="Cancelled by client/server")
+        raise
+
+    except Exception as e:
+        database.db_update_plot_status(job_id, "FAILED", error=f"{type(e).__name__}: {e}")
 
     finally:
         app.state.RUNNING_TASKS.pop(job_id, None)

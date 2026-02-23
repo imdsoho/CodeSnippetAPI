@@ -13,11 +13,12 @@ from eventLoop_processPool.web import job_route as job_route
 
 @dataclass
 class JobRuntimeConfig:
-    max_concurrency: int = 2          # 서버 전체 동시 분석 개수
-    max_workers: int = max(os.cpu_count() or 1, 1)
+    max_concurrency: int = 4          # 서버 전체 동시 분석 개수
+    # max_workers: int = max(os.cpu_count() or 1, 1)
+    max_workers: int = 4
 
 
-CFG = JobRuntimeConfig(max_concurrency=2)
+CFG = JobRuntimeConfig(max_concurrency=4)
 
 
 @asynccontextmanager

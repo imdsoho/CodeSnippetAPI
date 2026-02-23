@@ -1,7 +1,9 @@
 import asyncio
 import uuid
+import json
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from eventLoop_processPool.dao import job_model
 from eventLoop_processPool.repository import db_repository as database
@@ -73,3 +75,64 @@ async def submit_and_wait(req: job_model.JobRequest, request: Request):
 
     finally:
         request.app.state.RUNNING_TASKS.pop(job_id, None)
+
+
+# --------------------------------------------------------------------------------------------------------------------
+# PLOTS
+# --------------------------------------------------------------------------------------------------------------------
+
+@router.get("/plots", response_model=job_model.PlotResponse)
+async def submit_job(user_id, job_id, request: Request) -> job_model.PlotResponse:
+    user_id = user_id
+    job_id = job_id
+
+    await database.db_insert_plot_job(user_id, job_id)
+
+    task = asyncio.create_task(jobs.run_plot(job_id, request.app))
+    request.app.state.RUNNING_TASKS[job_id] = task
+
+    return job_model.PlotResponse(user_id=user_id, job_id=job_id, status="PENDING")
+
+
+@router.get("/plots/{job_id}")
+async def get_job(job_id: str):
+    job = await database.db_get_plot_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job
+
+
+@router.get("/plots/{job_id}/cancel")
+async def cancel_job(job_id: str, request: Request):
+    # 실행 중인 job task가 있으면 취소 시도
+    task = request.app.state.RUNNING_TASKS.get(job_id)
+    if task and not task.done():
+        task.cancel()
+        return {"job_id": job_id, "status": "CANCEL_REQUESTED"}
+
+    # 이미 종료된 경우 DB 상태 반환
+    job = await database.db_get_plot_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+    return {"job_id": job_id, "status": job["status"]}
+
+
+@router.get("/get-plot-status")
+def get_plot_status(job_id: str):
+    return StreamingResponse(plot_status_generator(job_id), media_type="text/event-stream")
+
+
+async def plot_status_generator(job_id: str):
+    while True:
+        result = await database.db_get_plot_job(job_id)
+
+        if result:
+            status = result["status"]
+            data = json.dumps({"status": status})
+
+            message = ""
+            ret_message = f"job_id: {job_id} \nevent: \ndata: {data}\nmessage: {message} \n\n"
+
+            yield ret_message
+
+        await asyncio.sleep(0.3)

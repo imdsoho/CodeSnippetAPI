@@ -20,3 +20,14 @@ class JobRequest(BaseModel):
 class JobResponse(BaseModel):
     job_id: str
     status: str
+
+
+class PlotRequest(BaseModel):
+    user_id: str
+    job_id: str
+
+
+class PlotResponse(BaseModel):
+    user_id: str
+    job_id: str
+    status: str
